@@ -18,6 +18,7 @@ RUN yum update -y && \
     udunits2 \
     openssl \
     netcdf \
+    libwebp-devel \
     java-1.8.0-openjdk && \
 # building / development packages
     yum install -y centos-release-scl && \
@@ -47,6 +48,7 @@ COPY . /adaguc/adaguc-server-master
 # RUN tar -xzvf adaguc-server-master.tar.gz
 
 WORKDIR /adaguc/adaguc-server-master
+
 RUN bash compile.sh
 
 ######### Second stage (production) ############
@@ -67,6 +69,7 @@ RUN yum update -y && \
     udunits2 \
     openssl \
     netcdf \
+    libwebp-devel \
     java-1.8.0-openjdk && \
     yum clean all && \
     rm -rf /var/cache/yum
@@ -80,7 +83,7 @@ COPY --from=0 /adaguc/adaguc-server-master/tests /adaguc/adaguc-server-master/te
 COPY --from=0 /adaguc/adaguc-server-master/runtests.sh /adaguc/adaguc-server-master/runtests.sh
 
 # Install adaguc-services (spring boot application for running adaguc-server)
-RUN curl -L https://jitpack.io/com/github/KNMI/adaguc-services/1.2.1/adaguc-services-1.2.1.jar -o /adaguc/adaguc-services.jar && \
+RUN curl -L https://jitpack.io/com/github/KNMI/adaguc-services/1.2.4/adaguc-services-1.2.4.jar -o /adaguc/adaguc-services.jar && \
 # Install newer numpy
     curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
     python get-pip.py && \

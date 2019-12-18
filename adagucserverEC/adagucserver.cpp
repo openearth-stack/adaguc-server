@@ -28,6 +28,7 @@
 #include "CReportWriter.h"
 #include <getopt.h>
 #include "CDebugger_H.h"
+
 extern Tracer NewTrace;
 
 DEF_ERRORMAIN();
@@ -58,28 +59,6 @@ void writeLogFile(const char * msg){
 }
 
 void writeErrorFile(const char * msg){
-//   //fprintf(stderr,"%s",msg);
-//   char * logfile=getenv("ADAGUC_ERRORFILE");
-//   if(logfile!=NULL){
-//     FILE * pFile;
-//     pFile = fopen (logfile , "a" );
-//     if(pFile != NULL){
-// //      setvbuf(pFile, NULL, _IONBF, 0);
-//       fputs  (msg, pFile );
-//       if(strncmp(msg,"[D:",3)==0||strncmp(msg,"[W:",3)==0||strncmp(msg,"[E:",3)==0){
-//         time_t myTime = time(NULL);
-//         tm *myUsableTime = localtime(&myTime);
-//         char szTemp[128];
-//         snprintf(szTemp,127,"%.4d-%.2d-%.2dT%.2d:%.2d:%.2dZ/%d ",
-//                  myUsableTime->tm_year+1900,myUsableTime->tm_mon+1,myUsableTime->tm_mday,
-//                  myUsableTime->tm_hour,myUsableTime->tm_min,myUsableTime->tm_sec,
-//                  myPID
-//         );
-//         fputs  (szTemp, pFile );
-//       }
-//       fclose (pFile);
-//     }else fprintf(stderr,"Unable to write error logfile %s\n",logfile);
-//   };
    writeLogFile(msg);
 }
 
@@ -154,7 +133,7 @@ int _main(int argc, char **argv, char **envp){
   CT::string file;
   CT::string inspireDatasetCSW;
   CT::string datasetPath;
-  
+  CT::string layerName;
  
   while(true) {
       int opt_idx = 0;
@@ -166,13 +145,15 @@ int _main(int argc, char **argv, char **envp){
           { "path", required_argument, 0, 0 },
           { "rescan", no_argument, 0, 0 },
           { "nocleanup", no_argument, 0, 0 },
+          { "cleanfiles", optional_argument, 0, 0 },
           { "recreate", no_argument, 0, 0 },
           { "getlayers", no_argument, 0, 0 },
           { "file", required_argument, 0, 0 },
           { "inspiredatasetcsw", required_argument, 0, 0 },
           { "datasetpath", required_argument, 0, 0 },
           { "test", no_argument, 0, 0 },
-          { "report", optional_argument, 0, 0 }
+          { "report", optional_argument, 0, 0 },
+          { "layername", required_argument, 0, 0 }
       };
 
       opt = getopt_long(argc, argv, "", long_options, &opt_idx);
@@ -199,6 +180,9 @@ int _main(int argc, char **argv, char **envp){
           if(strncmp(long_options[opt_idx].name,"tailpath",8)==0){
               tailPath.copy(optarg);
           }
+          if(strncmp(long_options[opt_idx].name,"layername",9)==0){
+              layerName.copy(optarg);
+          }
           if(strncmp(long_options[opt_idx].name,"path",4)==0){
               layerPathToScan.copy(optarg);
           }
@@ -209,6 +193,10 @@ int _main(int argc, char **argv, char **envp){
           if(strncmp(long_options[opt_idx].name,"nocleanup",9)==0){
               CDBDebug("NOCLEANUP: Leave all records in DB, don't check if files have disappeared");
               scanFlags|=CDBFILESCANNER_DONTREMOVEDATAFROMDB;
+          }
+          if(strncmp(long_options[opt_idx].name,"cleanfiles",10)==0){
+              CDBDebug("CLEAN: Delete old files according to Layer configuration");
+              scanFlags|=CDBFILESCANNER_CLEANFILES;
           }
           if(strncmp(long_options[opt_idx].name,"recreate",8)==0){
               CDBDebug("RECREATE: Drop tables and recreate them");
@@ -246,7 +234,7 @@ int _main(int argc, char **argv, char **envp){
           CDBError("Unable to read configuration file");
           return 1;
       }
-      status = request.updatedb(&tailPath,&layerPathToScan,scanFlags);
+      status = request.updatedb(&tailPath,&layerPathToScan,scanFlags, layerName);
       if(status != 0){
           CDBError("Error occured in updating the database");
       }
@@ -311,7 +299,7 @@ int _main(int argc, char **argv, char **envp){
 
 
 int main(int argc, char **argv, char **envp){
-  
+  /* Check if ADAGUC_LOGFILE is set */
   const char * ADAGUC_LOGFILE=getenv("ADAGUC_LOGFILE");
   if(ADAGUC_LOGFILE!=NULL){
     pLogDebugFile = fopen (ADAGUC_LOGFILE , "a" );
@@ -319,6 +307,8 @@ int main(int argc, char **argv, char **envp){
       fprintf(stderr,"Unable to write ADAGUC_LOGFILE %s\n",ADAGUC_LOGFILE);
     }
   }
+
+  /* Check if we enable logbuffer, true means unbuffered output with live logging but means a slower service */
   const char * ADAGUC_ENABLELOGBUFFER=getenv("ADAGUC_ENABLELOGBUFFER");
   if(ADAGUC_ENABLELOGBUFFER!=NULL){
     CT::string check = ADAGUC_ENABLELOGBUFFER;
@@ -326,6 +316,28 @@ int main(int argc, char **argv, char **envp){
       useLogBuffer = true;
     } 
   }
+
+  /* Check if ADAGUC_PATH is set, if not set it here */
+  const char * ADAGUC_PATH=getenv("ADAGUC_PATH");
+  if(ADAGUC_PATH==NULL) {
+    char str[1024];getcwd(str, 1023); // TODO: maybe CWD is not the best
+    CT::string currentPath = str;
+    currentPath.replaceSelf("/adaguc-server/adagucserverEC", "/adaguc-server/"); /* If we are developing directly in adagucserverEC path, remove the last dir */
+    currentPath.replaceSelf("/adaguc-server/bin", "/adaguc-server/"); /* If we are developing directly in adagucserverEC path, remove the last dir */
+    setenv("ADAGUC_PATH", currentPath.c_str(), currentPath.length());
+    ADAGUC_PATH=getenv("ADAGUC_PATH");
+    CDBDebug("ADAGUC_PATH environment variable is not set, guessing path using CWD: [%s]", ADAGUC_PATH);
+  }
+
+  /* Check if ADAGUC_TMP is set, if not set here */
+  const char * ADAGUC_TMP=getenv("ADAGUC_TMP");
+  if(ADAGUC_TMP==NULL) {
+    setenv("ADAGUC_TMP", "/tmp/", 6);
+     ADAGUC_TMP=getenv("ADAGUC_TMP");
+     CDBDebug("ADAGUC_TMP environment variable is not set, setting to : [%s]", ADAGUC_TMP);
+  }
+
+
   int status = _main(argc,argv, envp);
 
   // Print the check report formatted as JSON.
@@ -334,6 +346,8 @@ int main(int argc, char **argv, char **envp){
   CCachedDirReader::free();
   
   CTime::cleanInstances();
+
+  CDFObjectStore::getCDFObjectStore()->clear();
   
   /* Check Tracer for leaks */
   if (NewTrace.Dump() != 0){

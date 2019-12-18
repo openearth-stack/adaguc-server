@@ -12,7 +12,7 @@ Step 3: Compile adaguc-server:
 Step 4: Setup adaguc-services server:
 ```sudo bash ./data/scripts/ubuntu_18_setup_adaguc-services.sh```
 
-# Verify that is is working
+# Verify that adaguc-server is working
 
 ### Test a NetCDF file with autoWMS ###
 
@@ -31,6 +31,7 @@ pushd .
 cd /data/adaguc-data
 wget -nc -r -l2 -A.h5   -I /knmi/thredds/fileServer/,/knmi/thredds/catalog/ 'http://opendap.knmi.nl/knmi/thredds/catalog/ADAGUC/testsets/projectedgrids/meteosat/catalog.html'
 popd
+export ADAGUC_PATH=`pwd`
 export ADAGUC_CONFIG=./data/config/adaguc.vm.xml
 bash ./Docker/adaguc-server-updatedatasets.sh msg_hrvis_hdf5_example
 ```
